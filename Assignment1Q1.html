@@ -2,7 +2,7 @@
 <html>
 <head><meta charset="utf-8" />
 
-<title>Assignment1Q2</title>
+<title>Assignment1Q1</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.10/require.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
@@ -13076,12 +13076,243 @@ div#notebook {
 
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In&nbsp;[1]:</div>
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-python"><pre><span></span><span class="c1">#Uploads</span>
+<span class="kn">from</span> <span class="nn">google.colab</span> <span class="kn">import</span> <span class="n">files</span>
+<span class="n">uploaded</span> <span class="o">=</span> <span class="n">files</span><span class="o">.</span><span class="n">upload</span><span class="p">()</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+
+    <div class="prompt"></div>
+
+
+
+<div class="output_html rendered_html output_subarea ">
+
+     <input type="file" id="files-8f1f31be-75d5-41ae-a6e8-e2cbae2e67c4" name="files[]" multiple disabled
+        style="border:none" />
+     <output id="result-8f1f31be-75d5-41ae-a6e8-e2cbae2e67c4">
+      Upload widget is only available when the cell has been executed in the
+      current browser session. Please rerun this cell to enable.
+      </output>
+      <script>// Copyright 2017 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview Helpers for google.colab Python module.
+ */
+(function(scope) {
+function span(text, styleAttributes = {}) {
+  const element = document.createElement('span');
+  element.textContent = text;
+  for (const key of Object.keys(styleAttributes)) {
+    element.style[key] = styleAttributes[key];
+  }
+  return element;
+}
+
+// Max number of bytes which will be uploaded at a time.
+const MAX_PAYLOAD_SIZE = 100 * 1024;
+
+function _uploadFiles(inputId, outputId) {
+  const steps = uploadFilesStep(inputId, outputId);
+  const outputElement = document.getElementById(outputId);
+  // Cache steps on the outputElement to make it available for the next call
+  // to uploadFilesContinue from Python.
+  outputElement.steps = steps;
+
+  return _uploadFilesContinue(outputId);
+}
+
+// This is roughly an async generator (not supported in the browser yet),
+// where there are multiple asynchronous steps and the Python side is going
+// to poll for completion of each step.
+// This uses a Promise to block the python side on completion of each step,
+// then passes the result of the previous step as the input to the next step.
+function _uploadFilesContinue(outputId) {
+  const outputElement = document.getElementById(outputId);
+  const steps = outputElement.steps;
+
+  const next = steps.next(outputElement.lastPromiseValue);
+  return Promise.resolve(next.value.promise).then((value) => {
+    // Cache the last promise value to make it available to the next
+    // step of the generator.
+    outputElement.lastPromiseValue = value;
+    return next.value.response;
+  });
+}
+
+/**
+ * Generator function which is called between each async step of the upload
+ * process.
+ * @param {string} inputId Element ID of the input file picker element.
+ * @param {string} outputId Element ID of the output display.
+ * @return {!Iterable<!Object>} Iterable of next steps.
+ */
+function* uploadFilesStep(inputId, outputId) {
+  const inputElement = document.getElementById(inputId);
+  inputElement.disabled = false;
+
+  const outputElement = document.getElementById(outputId);
+  outputElement.innerHTML = '';
+
+  const pickedPromise = new Promise((resolve) => {
+    inputElement.addEventListener('change', (e) => {
+      resolve(e.target.files);
+    });
+  });
+
+  const cancel = document.createElement('button');
+  inputElement.parentElement.appendChild(cancel);
+  cancel.textContent = 'Cancel upload';
+  const cancelPromise = new Promise((resolve) => {
+    cancel.onclick = () => {
+      resolve(null);
+    };
+  });
+
+  // Wait for the user to pick the files.
+  const files = yield {
+    promise: Promise.race([pickedPromise, cancelPromise]),
+    response: {
+      action: 'starting',
+    }
+  };
+
+  cancel.remove();
+
+  // Disable the input element since further picks are not allowed.
+  inputElement.disabled = true;
+
+  if (!files) {
+    return {
+      response: {
+        action: 'complete',
+      }
+    };
+  }
+
+  for (const file of files) {
+    const li = document.createElement('li');
+    li.append(span(file.name, {fontWeight: 'bold'}));
+    li.append(span(
+        `(${file.type || 'n/a'}) - ${file.size} bytes, ` +
+        `last modified: ${
+            file.lastModifiedDate ? file.lastModifiedDate.toLocaleDateString() :
+                                    'n/a'} - `));
+    const percent = span('0% done');
+    li.appendChild(percent);
+
+    outputElement.appendChild(li);
+
+    const fileDataPromise = new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        resolve(e.target.result);
+      };
+      reader.readAsArrayBuffer(file);
+    });
+    // Wait for the data to be ready.
+    let fileData = yield {
+      promise: fileDataPromise,
+      response: {
+        action: 'continue',
+      }
+    };
+
+    // Use a chunked sending to avoid message size limits. See b/62115660.
+    let position = 0;
+    do {
+      const length = Math.min(fileData.byteLength - position, MAX_PAYLOAD_SIZE);
+      const chunk = new Uint8Array(fileData, position, length);
+      position += length;
+
+      const base64 = btoa(String.fromCharCode.apply(null, chunk));
+      yield {
+        response: {
+          action: 'append',
+          file: file.name,
+          data: base64,
+        },
+      };
+
+      let percentDone = fileData.byteLength === 0 ?
+          100 :
+          Math.round((position / fileData.byteLength) * 100);
+      percent.textContent = `${percentDone}% done`;
+
+    } while (position < fileData.byteLength);
+  }
+
+  // All done.
+  yield {
+    response: {
+      action: 'complete',
+    }
+  };
+}
+
+scope.google = scope.google || {};
+scope.google.colab = scope.google.colab || {};
+scope.google.colab._files = {
+  _uploadFiles,
+  _uploadFilesContinue,
+};
+})(self);
+</script> 
+</div>
+
+</div>
+
+<div class="output_area">
+
+    <div class="prompt"></div>
+
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Saving Sample_TimeSeries.csv to Sample_TimeSeries.csv
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
 <div class="inner_cell">
     <div class="input_area">
 <div class=" highlight hl-python"><pre><span></span><span class="c1">#IMPORTS</span>
+<span class="c1">#Reading input as csv and using median - TO RUN TEST CODE PROVIDED</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
-<span class="kn">import</span> <span class="nn">pandas</span>
+<span class="n">TimeSeriesDF</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s2">&quot;Sample_TimeSeries.csv&quot;</span><span class="p">)</span>
+<span class="n">Time_series</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">TimeSeriesDF</span><span class="p">[</span><span class="s2">&quot;Y&quot;</span><span class="p">])</span>
+<span class="n">Threshold</span> <span class="o">=</span> <span class="n">TimeSeriesDF</span><span class="p">[</span><span class="s2">&quot;Y&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">median</span><span class="p">()</span>
 </pre></div>
 
     </div>
@@ -13094,29 +13325,14 @@ div#notebook {
 <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-python"><pre><span></span><span class="c1"># Execute this block for file input</span>
-<span class="n">INPUT_FILE_NAME</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
-<span class="sd">&quot;&quot;&quot;&quot;</span>
-<span class="sd">Expected format: Header followed by integers delimited by newlines.</span>
-<span class="sd">&quot;&quot;&quot;</span>
-<span class="n">input_series</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">pandas</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">INPUT_FILE_NAME</span><span class="p">))</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-<div class="prompt input_prompt">In&nbsp;[20]:</div>
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-python"><pre><span></span><span class="c1"># Execute this block for user input</span>
+<div class=" highlight hl-python"><pre><span></span><span class="c1"># #Asking user for input </span>
 <span class="sd">&quot;&quot;&quot;&quot;</span>
 <span class="sd">Expected format : Numbers in an array delimited by comma</span>
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="n">input_series</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">num</span><span class="p">)</span> <span class="k">for</span> <span class="n">num</span> <span class="ow">in</span> <span class="nb">input</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)]</span>
+
+<span class="c1">#Getting the threshold value from the user</span>
+<span class="n">thres</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">input</span><span class="p">(</span><span class="s2">&quot;Enter the threshold: &quot;</span><span class="p">))</span>
 </pre></div>
 
     </div>
@@ -13133,86 +13349,8 @@ div#notebook {
 
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>20,10,5,10
-</pre>
-</div>
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-<div class="prompt input_prompt">In&nbsp;[21]:</div>
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-python"><pre><span></span><span class="c1">#Custom function to generate adjacency matrix for the provided HVG</span>
-<span class="k">def</span> <span class="nf">adjacency_matrix</span><span class="p">(</span><span class="n">time_series</span><span class="p">):</span>
-  <span class="n">shape</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">time_series</span><span class="p">)</span>
-  <span class="n">output_matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span>
-        <span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">shape</span><span class="p">),</span>
-        <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span>
-    <span class="p">)</span>
-  <span class="n">input_array</span><span class="o">=</span><span class="n">time_series</span>
-  
-<span class="c1">#Initializing the index variable</span>
-  <span class="n">init</span><span class="o">=</span><span class="mi">0</span>
-
-<span class="c1">#Code block to find the highest visible subsequent value in the array</span>
-  <span class="k">while</span> <span class="n">init</span> <span class="o">&lt;</span> <span class="n">shape</span><span class="p">:</span>
-    <span class="n">comparable</span> <span class="o">=</span> <span class="n">init</span><span class="o">+</span><span class="mi">1</span>
-    <span class="k">while</span> <span class="n">comparable</span> <span class="o">&lt;</span> <span class="n">shape</span><span class="p">:</span>
-      <span class="k">if</span><span class="p">(</span><span class="n">input_array</span><span class="p">[</span><span class="n">init</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">input_array</span><span class="p">[</span><span class="n">comparable</span><span class="p">])</span> <span class="ow">or</span> <span class="p">(</span><span class="n">input_array</span><span class="p">[</span><span class="n">init</span><span class="p">]</span> <span class="o">==</span> <span class="n">input_array</span><span class="p">[</span><span class="n">comparable</span><span class="p">]):</span>
-        <span class="n">output_matrix</span><span class="p">[</span><span class="n">init</span><span class="p">][</span><span class="n">comparable</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
-        <span class="n">output_matrix</span><span class="p">[</span><span class="n">comparable</span><span class="p">][</span><span class="n">init</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
-        <span class="k">break</span>
-      <span class="n">comparable</span><span class="o">=</span><span class="n">comparable</span><span class="o">+</span><span class="mi">1</span>
-    <span class="n">init</span><span class="o">=</span><span class="n">init</span><span class="o">+</span><span class="mi">1</span>
-
-<span class="c1">#Code block to make all neighboring values True</span>
-  <span class="n">init</span> <span class="o">=</span> <span class="mi">1</span>
-  <span class="k">while</span> <span class="n">init</span> <span class="o">&lt;</span> <span class="n">shape</span><span class="p">:</span>
-    <span class="n">output_matrix</span><span class="p">[</span><span class="n">init</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="n">init</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
-    <span class="n">output_matrix</span><span class="p">[</span><span class="n">init</span><span class="p">][</span><span class="n">init</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
-    <span class="n">init</span><span class="o">=</span><span class="n">init</span><span class="o">+</span><span class="mi">1</span>
-
-  <span class="k">return</span> <span class="n">output_matrix</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-<div class="prompt input_prompt">In&nbsp;[22]:</div>
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-python"><pre><span></span><span class="c1">#Passing the user input as arguement to generate adjacency matrix.</span>
-
-<span class="nb">print</span><span class="p">(</span><span class="n">adjacency_matrix</span><span class="p">(</span><span class="n">input_series</span><span class="p">))</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-
-<div class="output_area">
-
-    <div class="prompt"></div>
-
-
-<div class="output_subarea output_stream output_stdout output_text">
-<pre>[[0 1 0 0]
- [1 0 1 1]
- [0 1 0 1]
- [0 1 1 0]]
+<pre>10,10,10,10
+Enter the threshold: 11
 </pre>
 </div>
 </div>
@@ -13226,7 +13364,87 @@ div#notebook {
 <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-python"><pre><span></span><span class="err">!</span><span class="n">jupyter</span> <span class="n">nbconvert</span> <span class="o">--</span><span class="n">to</span> <span class="n">html</span> <span class="n">Assignment1Q2</span><span class="o">.</span><span class="n">ipynb</span>
+<div class=" highlight hl-python"><pre><span></span><span class="c1">#Custom function to find difference between index values - # of days </span>
+<span class="k">def</span> <span class="nf">interevent_time</span><span class="p">(</span><span class="n">Time_series</span><span class="p">,</span><span class="n">Threshold</span><span class="p">):</span>
+  <span class="n">Time_series</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">Time_series</span><span class="p">)</span>
+  <span class="n">ip_list</span> <span class="o">=</span> <span class="n">Time_series</span><span class="p">[</span><span class="n">Time_series</span> <span class="o">&gt;=</span> <span class="n">Threshold</span><span class="p">]</span>
+  <span class="n">ip_list</span><span class="o">=</span><span class="n">ip_list</span><span class="o">.</span><span class="n">index</span>
+  <span class="n">result</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">ip_list</span><span class="p">))</span><span class="o">.</span><span class="n">diff</span><span class="p">())</span>
+  <span class="n">cleaned_result</span> <span class="o">=</span> <span class="p">[</span><span class="n">ind</span> <span class="k">for</span> <span class="n">ind</span> <span class="ow">in</span> <span class="n">result</span> <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">isnull</span><span class="p">(</span><span class="n">ind</span><span class="p">)</span> <span class="o">==</span> <span class="kc">False</span> <span class="ow">and</span> <span class="n">ind</span> <span class="o">!=</span> <span class="s1">&#39;nan&#39;</span><span class="p">]</span>
+  <span class="k">return</span> <span class="n">cleaned_result</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-python"><pre><span></span><span class="c1">#Calling the custom function by passing the values input by the user as arguments</span>
+<span class="n">interevent_time</span><span class="p">(</span><span class="n">input_series</span><span class="p">,</span> <span class="n">thres</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+
+    <div class="prompt"></div>
+
+
+<div class="output_subarea output_stream output_stderr output_text">
+<pre>/usr/local/lib/python3.7/dist-packages/ipykernel_launcher.py:6: DeprecationWarning: The default dtype for empty Series will be &#39;object&#39; instead of &#39;float64&#39; in a future version. Specify a dtype explicitly to silence this warning.
+  
+</pre>
+</div>
+</div>
+
+<div class="output_area">
+
+    <div class="prompt output_prompt">Out[&nbsp;]:</div>
+
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>[]</pre>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-python"><pre><span></span><span class="c1">#Calling the custom function by passing the given test data as input</span>
+<span class="n">interevent_time</span><span class="p">(</span><span class="n">Time_series</span><span class="p">,</span> <span class="n">Threshold</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-python"><pre><span></span><span class="err">!</span><span class="n">jupyter</span> <span class="n">nbconvert</span> <span class="o">--</span><span class="n">to</span> <span class="n">html</span> <span class="n">Assignment1Q1Submission</span><span class="o">.</span><span class="n">ipynb</span>
 </pre></div>
 
     </div>
@@ -13243,8 +13461,8 @@ div#notebook {
 
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>[NbConvertApp] Converting notebook Assignment1Q2.ipynb to html
-[NbConvertApp] Writing 279087 bytes to Assignment1Q2.html
+<pre>[NbConvertApp] Converting notebook Assignment1Q1Submission.ipynb to html
+[NbConvertApp] Writing 285519 bytes to Assignment1Q1Submission.html
 </pre>
 </div>
 </div>
